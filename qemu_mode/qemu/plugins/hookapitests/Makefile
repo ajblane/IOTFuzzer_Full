@@ -7,16 +7,9 @@ include config-plugin.mak
 include $(SRC_PATH)/$(TARGET_DIR)/config-target.mak
 include $(SRC_PATH)/config-host.mak
 
-#zyw
-GLIB_CFLAGS=-pthread -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include
-
-#zyw I$(SRC_PATH)/include -I$(SRC_PATH)/target-$(TARGET_ARCH)
-DEFINES=-I. -I$(SRC_PATH)/include -I$(SRC_PATH) -I$(SRC_PATH)/plugins -I$(SRC_PATH)/fpu -I$(SRC_PATH)/shared -I$(SRC_PATH)/target/$(TARGET_BASE_ARCH) -I$(SRC_PATH)/$(TARGET_DIR) -I$(SRC_PATH)/slirp 
+DEFINES=-I. -I$(SRC_PATH) -I$(SRC_PATH)/plugins -I$(SRC_PATH)/fpu -I$(SRC_PATH)/shared -I$(SRC_PATH)/target-$(TARGET_ARCH) -I$(SRC_PATH)/$(TARGET_DIR) -I$(SRC_PATH)/slirp 
 DEFINES+=-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_GNU_SOURCE -DNEED_CPU_H
 DEFINES+=-I$(GLIB_CFLAGS)
-
-#zyw
-DEFINES+=-I$(SRC_PATH)/linux-headers -I$(SRC_PATH)/tcg -I$(SRC_PATH)/tcg/$(TARGET_BASE_ARCH) 
 
 CC=gcc
 CPP=g++

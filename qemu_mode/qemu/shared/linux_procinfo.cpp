@@ -1800,7 +1800,8 @@ int load_proc_info(CPUState * env, gva_t threadinfo, ProcInfo &pi)
   string sProcInfoPath;
   boost::property_tree::ptree pt;
   get_procinfo_directory(sProcInfoPath);
-  sProcInfoPath += "procinfo.ini";
+  //sProcInfoPath += "procinfo.ini";
+  sProcInfoPath = "procinfo.ini";
   monitor_printf(cur_mon, "\nProcinfo path: %s\n",sProcInfoPath.c_str());
   // read procinfo.ini
   if (0 != access(sProcInfoPath.c_str(), 0))

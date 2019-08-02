@@ -166,9 +166,9 @@ void migration_incoming_state_destroy(void)
         qemu_fclose(mis->from_src_file);
         mis->from_src_file = NULL;
     }
-    //zyw qemu bug fixed
-    //qemu_event_destroy(&mis->main_thread_load_event);	
-    qemu_event_reset(&mis->main_thread_load_event); 
+
+    //qemu_event_destroy(&mis->main_thread_load_event);
+    qemu_event_reset(&mis->main_thread_load_event);
 }
 
 static void migrate_generate_event(int new_state)

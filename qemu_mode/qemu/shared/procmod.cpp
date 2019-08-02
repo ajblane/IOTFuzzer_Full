@@ -411,7 +411,7 @@ int is_guest_windows()
     //FIXME: we use a very simple hack here. Windows uses FS segment register to store 
     // the current process context, while Linux does not. We may need better heuristics 
     // when we need to support more guest systems.
-    return (cpu_single_env->segs[R_FS].selector != 0);
+    return (((CPUArchState *) current_cpu->env_ptr)->segs[R_FS].selector != 0); //zyw
 #else
     return 0;
 #endif

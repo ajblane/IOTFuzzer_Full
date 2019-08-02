@@ -26,8 +26,11 @@ extern "C"
 {
 #endif
 
+#include "zyw_config1.h"
 #include "cpu.h"
 #include "shared/DECAF_types.h"
+#include "exec/exec-all.h"
+
 
 /*
  * Condition flags for range callbacks. Transitions are only valid for instructions that branch.
@@ -145,9 +148,12 @@ typedef struct _DECAF_Mem_Write_Params
 {
 	gva_t vaddr;
 	gpa_t paddr;
-	unsigned long haddr;
 	DATA_TYPE dt;
 	unsigned long value;
+#ifdef STORE_PAGE_FUNC
+	unsigned long haddr;
+	int caller_pos;
+#endif
 }DECAF_Mem_Write_Params;
 typedef struct _DECAF_EIP_Check_Params
 {

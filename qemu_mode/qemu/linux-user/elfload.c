@@ -20,7 +20,7 @@
 
 #define ELF_OSABI   ELFOSABI_SYSV
 
-extern abi_ulong afl_entry_point, afl_start_code, afl_end_code;
+extern abi_ulong afl_entry_point;
 
 /* from personality.h */
 
@@ -2122,11 +2122,9 @@ static void load_elf_image(const char *image_name, int image_fd,
             if (elf_prot & PROT_EXEC) {
                 if (vaddr < info->start_code) {
                     info->start_code = vaddr;
-                    if (!afl_start_code) afl_start_code = vaddr;
                 }
                 if (vaddr_ef > info->end_code) {
                     info->end_code = vaddr_ef;
-                    if (!afl_end_code) afl_end_code = vaddr_ef;
                 }
             }
             if (elf_prot & PROT_WRITE) {

@@ -4,8 +4,7 @@
 # Heng Yin <heyin@syr.edu>
 #
 
-target="mipsel-softmmu" #zyw
-ARCH="MIPS"
+target="i386-softmmu"
 plugin_path=$(pwd)
 echo plugin path is $plugin_path
 

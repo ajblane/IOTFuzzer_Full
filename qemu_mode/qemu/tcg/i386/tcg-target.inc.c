@@ -21,6 +21,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "zyw_config1.h"
+
+#ifdef STORE_PAGE_FUNC
+#include "DECAF_callback_to_QEMU.h"
+#ifdef __i386__
+#define REGPARM __attribute((regparm(3)))
+#else
+#define REGPARM
+#endif
+#endif
 
 #include "tcg-be-ldst.h"
 
@@ -35,22 +45,6 @@ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
 };
 #endif
 
-//zyw
-#ifdef CONFIG_TCG_TAINT
-#include "tainting/taint_memory.h"
-#ifndef CONFIG_SOFTMMU
-#error "CONFIG_TCG_TAINT can only be enabled with a SOFTMMU target!"
-#endif /* CONFIG_SOFTMMU */
-#endif /* CONFIG_TCG_TAINT */
-#include "DECAF_callback_to_QEMU.h"
-
-#ifdef __i386__
-#define REGPARM __attribute((regparm(3)))
-#else
-#define REGPARM
-#endif
-
-//zyw end
 static const int tcg_target_reg_alloc_order[] = {
 #if TCG_TARGET_REG_BITS == 64
     TCG_REG_RBP,
@@ -103,21 +97,6 @@ static const int tcg_target_call_oarg_regs[] = {
     TCG_REG_EDX
 #endif
 };
-
-//zyw changeqemu_ram_addr_from_host_nofail to qemu_ram_addr_from_host
-static void REGPARM ld_cb(unsigned long addr, gva_t vaddr) {
-//fprintf(stderr, "ldb_cb: %08x %08x\n", addr, vaddr);
-  if(DECAF_is_callback_needed(DECAF_MEM_READ_CB))
-    helper_DECAF_invoke_mem_read_callback(vaddr,qemu_ram_addr_from_host((void *)(addr)), *(uint8_t *) addr, 1);  
-}
-
-static void REGPARM st_cb(gva_t vaddr, unsigned long addr ,unsigned long value) {
-//fprintf(stderr, "stb_cb: %08x %08x\n", addr, vaddr);
-  if(DECAF_is_callback_needed(DECAF_MEM_WRITE_CB))
-    //helper_DECAF_invoke_mem_write_callback(vaddr,qemu_ram_addr_from_host((void *)(addr)),value & 0xFF,1);
-    helper_DECAF_invoke_mem_write_callback(vaddr,qemu_ram_addr_from_host((void *)(addr)),(void *)(addr), value,1);
-}
-//zyw end
 
 /* Constants we accept.  */
 #define TCG_CT_CONST_S32 0x100
@@ -1694,32 +1673,8 @@ static void tcg_out_qemu_ld(TCGContext *s, const TCGArg *args, bool is64)
 #if defined(CONFIG_SOFTMMU)
     mem_index = get_mmuidx(oi);
 
-    /* AWH - Save the virtual address */
-    //tcg_out_push(s, args[addrlo]);
-    //tcg_out_push(s, args[addrhi]);
-
     tcg_out_tlb_load(s, addrlo, addrhi, mem_index, opc,
                      label_ptr, offsetof(CPUTLBEntry, addr_read));
-
-
-    /* AWH - Before we call the functionality in the function 
-       tcg_out_qemu_ld_direct(), we push some parms, call our "raw" taint load 
-       functions, pop the original parms, and then call tcg_out_qemu_ld_direct(). */
-
-    //tcg_out_pop(s, args[addrhi]);
-    //tcg_out_pop(s, args[addrlo]);
-
-
-    tcg_out_push(s, datalo);
-    tcg_out_push(s, datahi);
-    tcg_out_push(s, tcg_target_call_iarg_regs[0]);
-    tcg_out_push(s, tcg_target_call_iarg_regs[1]);
-    tcg_out_mov(s, TCG_TYPE_I32, tcg_target_call_iarg_regs[1], args[addrlo]);
-    tcg_out_call(s, (tcg_target_long)ld_cb);
-    tcg_out_pop(s, tcg_target_call_iarg_regs[1]);
-    tcg_out_pop(s, tcg_target_call_iarg_regs[0]);
-    tcg_out_pop(s, datahi);
-    tcg_out_pop(s, datalo);
 
     /* TLB Hit.  */
     tcg_out_qemu_ld_direct(s, datalo, datahi, TCG_REG_L1, -1, 0, 0, opc);
@@ -1837,6 +1792,13 @@ static void tcg_out_qemu_st_direct(TCGContext *s, TCGReg datalo, TCGReg datahi,
     }
 }
 
+#ifdef STORE_PAGE_FUNC
+static void REGPARM st_cb(gva_t vaddr, unsigned long addr ,unsigned long value) {
+  if(DECAF_is_callback_needed(DECAF_MEM_WRITE_CB))
+    helper_DECAF_invoke_mem_write_callback(vaddr,qemu_ram_addr_from_host((void *)(addr)), (void *)(addr), value , 2, 0);
+}
+#endif
+
 static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
 {
     TCGReg datalo, datahi, addrlo;
@@ -1858,27 +1820,15 @@ static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
 #if defined(CONFIG_SOFTMMU)
     mem_index = get_mmuidx(oi);
 
-/* AWH - Save the virtual address */
-/*
-    tcg_out_push(s, args[addrlo]);
-    tcg_out_push(s, args[addrhi]);
-*/
     tcg_out_tlb_load(s, addrlo, addrhi, mem_index, opc,
                      label_ptr, offsetof(CPUTLBEntry, addr_write));
-
-    /* AWH - Before we call the functionality in the function 
-       tcg_out_qemu_ld_direct(), we push some parms, call our "raw" taint load 
-       functions, pop the original parms, and then call tcg_out_qemu_ld_direct(). */
-
-    //tcg_out_pop(s, args[addrhi]);
-    //tcg_out_pop(s, args[addrlo]);
-
+#ifdef STORE_PAGE_FUNC
     tcg_out_push(s, datalo);
     tcg_out_push(s, tcg_target_call_iarg_regs[0]);
     tcg_out_push(s, tcg_target_call_iarg_regs[1]);
     tcg_out_push(s, tcg_target_call_iarg_regs[2]);
 
-    //tcg_out_mov(s, TCG_TYPE_I32, tcg_target_call_iarg_regs[1], addrlo);	//paddr
+    //tcg_out_mov(s, TCG_TYPE_I32, tcg_target_call_iarg_regs[1], addrlo);   //paddr
     tcg_out_mov(s, TCG_TYPE_I32, tcg_target_call_iarg_regs[0], addrlo); //vaddr
     tcg_out_mov(s, TCG_TYPE_I32, tcg_target_call_iarg_regs[2], datalo);//value
      
@@ -1888,8 +1838,7 @@ static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
     tcg_out_pop(s, tcg_target_call_iarg_regs[1]);
     tcg_out_pop(s, tcg_target_call_iarg_regs[0]);
     tcg_out_pop(s, datalo);
-
-
+#endif
     /* TLB Hit.  */
     tcg_out_qemu_st_direct(s, datalo, datahi, TCG_REG_L1, 0, 0, opc);
 

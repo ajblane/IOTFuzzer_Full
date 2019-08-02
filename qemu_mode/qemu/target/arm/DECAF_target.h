@@ -63,12 +63,9 @@ static inline gva_t DECAF_getPC(CPUState* env)
 }
 
 //Based this off of helper.c in get_level1_table_address
-static inline gpa_t DECAF_getPGD(CPUState* env)
-{
-  //return (env->cp15.c2_base0 & env->cp15.c2_base_mask);
-  CPUArchState *env_ptr = (CPUArchState *)env->env_ptr;
-  return env_ptr->cp15.ttbr0_el[1];
-}
+//static inline gpa_t DECAF_getPGD(CPUState* env)
+gpa_t DECAF_getPGD(CPUState* env);
+
 
 static inline gva_t DECAF_getESP(CPUState* env)
 {

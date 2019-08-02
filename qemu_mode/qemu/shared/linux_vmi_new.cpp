@@ -20,7 +20,6 @@
 * 	Author : Abhishek V B
 */
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
@@ -67,6 +66,8 @@ extern "C" {
 #include "shared/utils/SimpleCallback.h"
 #include "linux_readelf.h"
 
+//zyw
+#include "shared/utils/Output.h"
 
 using namespace std;
 using namespace std::tr1;
@@ -219,7 +220,8 @@ static void new_kmod_callback(DECAF_Callback_Params* params)
 static void traverse_task_struct_add(CPUState *env)
 {
 
-    uint32_t task_pid = 0;
+    target_ulong task_pid = 0; //zyw change uint32_t to target_ulong
+   // uint32_t task_pid = 0;
     uint32_t kernel_count = 0; //zyw
     const int MAX_LOOP_COUNT = 10240;	// prevent infinite loop
     target_ulong next_task, mm, proc_cr3, task_pgd, ts_parent_pid, ts_real_parent;
@@ -239,18 +241,18 @@ static void traverse_task_struct_add(CPUState *env)
         }
 
 
-/*
+
         BREAK_IF(DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm,
                                 &mm) < 0);
-*/
+
 	DECAF_read_ptr(env, next_task + OFFSET_PROFILE.ts_mm,
                                 &mm);
         if (mm != 0)
         {
-/*
+
             BREAK_IF(DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_pgd,
                                     &task_pgd) < 0);
-*/
+
 	    DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_pgd,
                                     &task_pgd);
             proc_cr3 = DECAF_get_phys_addr(env, task_pgd);
@@ -323,7 +325,8 @@ static void traverse_task_struct_add(CPUState *env)
 static process *traverse_task_struct_remove(CPUState *env)
 {
     set<target_ulong> pids;
-    uint32_t task_pid = 0;
+    target_ulong task_pid = 0; //zyw change uint32_t to target_ulong
+    //uint32_t task_pid = 0;
     process *right_proc = NULL;
     uint32_t right_pid = 0;
 
@@ -388,12 +391,11 @@ void traverse_mmap(CPUState *env, void *opaque)
     string last_mod_name;
     module *mod = NULL;
 
-    if (DECAF_read_mem(env, proc->EPROC_base_addr + OFFSET_PROFILE.ts_mm, sizeof(target_ptr), &mm) < 0)
+    if (DECAF_read_ptr(env, proc->EPROC_base_addr + OFFSET_PROFILE.ts_mm, &mm) < 0)
         return;
 
-    if (DECAF_read_mem(env, mm + OFFSET_PROFILE.mm_mmap, sizeof(target_ptr), &mm_mmap) < 0)
+    if (DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_mmap, &mm_mmap) < 0)
         return;
-
     // Mark the `modules_extracted` true. This is done because this function calls `VMI_find_module_by_base`
     // and that function calls `traverse_mmap` if `modules_extracted` is false. We don't want to get into
     // an infinite recursion.
@@ -411,20 +413,21 @@ void traverse_mmap(CPUState *env, void *opaque)
     while(true)
     {
         // read start of curr vma
-        if (DECAF_read_mem(env, vma_curr + OFFSET_PROFILE.vma_vm_start, sizeof(target_ptr), &vma_vm_start) < 0)
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_start, &vma_vm_start) < 0)
             goto next;
-        printf("%lx:", vma_vm_start);
 
         // read end of curr vma
-        if (DECAF_read_mem(env, vma_curr + OFFSET_PROFILE.vma_vm_end, sizeof(target_ptr), &vma_vm_end) < 0)
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_end, &vma_vm_end) < 0)
             goto next;
-        printf("%lx\n", vma_vm_end);
+
+        DECAF_printf("memory %x:%x ", vma_vm_start, vma_vm_end); 
+
         // read the struct* file entry of the curr vma, used to then extract the dentry of the this page
-        if (DECAF_read_mem(env, vma_curr + OFFSET_PROFILE.vma_vm_file, sizeof(target_ptr), &vma_file) < 0 || !vma_file)
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_file, &vma_file) < 0 || !vma_file)
             goto next;
 
         // dentry extraction from the struct* file
-        if (DECAF_read_mem(env, vma_file + OFFSET_PROFILE.file_dentry, sizeof(target_ptr), &f_dentry) < 0 || !f_dentry)
+        if (DECAF_read_ptr(env, vma_file + OFFSET_PROFILE.file_dentry, &f_dentry) < 0 || !f_dentry)
             goto next;
 
 
@@ -434,11 +437,11 @@ void traverse_mmap(CPUState *env, void *opaque)
 
 
         // inode struct extraction from the struct* file
-        if (DECAF_read_mem(env, f_dentry + OFFSET_PROFILE.file_inode, sizeof(target_ptr), &f_inode) < 0 || !f_inode)
+        if (DECAF_read_ptr(env, f_dentry + OFFSET_PROFILE.file_inode, &f_inode) < 0 || !f_inode)
             goto next;
 
         // inode_number extraction
-        if (DECAF_read_mem(env, f_inode + OFFSET_PROFILE.inode_ino , sizeof(unsigned int), &inode_number) < 0 || !inode_number)
+        if (DECAF_read_ptr(env, f_inode + OFFSET_PROFILE.inode_ino ,&inode_number) < 0 || !inode_number)
             goto next;
 
         name[31] = '\0';	// truncate long string
@@ -447,6 +450,8 @@ void traverse_mmap(CPUState *env, void *opaque)
         // name is invalid, move on the data structure
         if (strlen(name)==0)
             goto next;
+
+        DECAF_printf("%s ", name);
 
 
         if (!strcmp(last_mod_name.c_str(), name))
@@ -485,9 +490,11 @@ void traverse_mmap(CPUState *env, void *opaque)
         {
             VMI_insert_module(proc->pid, mod_vm_start , mod);
         }
+        
 
 next:
-        if (DECAF_read_mem(env, vma_curr + OFFSET_PROFILE.vma_vm_next, sizeof(target_ptr), &vma_next) < 0)
+        DECAF_printf("\n");
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_next, &vma_next) < 0)
             break;
 
         if (vma_next == NULL)
@@ -730,7 +737,7 @@ static struct {
 } linux_pte_info = {0};
 
 
-
+#if defined(TARGET_MIPS)
 gpa_t mips_get_cur_pgd(CPUState *env){
 
     if (unlikely(linux_pte_info.pgd_current_p == 0)) {
@@ -800,4 +807,174 @@ gpa_t mips_get_cur_pgd(CPUState *env){
     /* Get pgd_current */
     //return ldl_phys(env->as, linux_pte_info.pgd_current_p);
     return ldl_phys(env->as, linux_pte_info.pgd_current_p) - 0x80000000; //zyw
+}
+#endif
+
+
+//zyw
+void traverse_mmap_new(CPUState *env, void *opaque, FILE *fp)
+{
+    process *proc = (process *)opaque;
+    target_ulong mm, vma_curr, vma_file, f_dentry, f_inode, mm_mmap, vma_next, vma_prot, vma_flags=NULL;
+    set<target_ulong> module_bases;
+    unsigned int inode_number;
+    target_ulong vma_vm_start = 0, vma_vm_end = 0;
+    target_ulong last_vm_start = 0, last_vm_end = 0, mod_vm_start = 0;
+    char name[32];  // module file path
+    string last_mod_name;
+    module *mod = NULL;
+
+    if (DECAF_read_ptr(env, proc->EPROC_base_addr + OFFSET_PROFILE.ts_mm, &mm) < 0)
+        return;
+    
+    if (DECAF_read_ptr(env, mm + OFFSET_PROFILE.mm_mmap, &mm_mmap) < 0)
+        return;
+
+    // Mark the `modules_extracted` true. This is done because this function calls `VMI_find_module_by_base`
+    // and that function calls `traverse_mmap` if `modules_extracted` is false. We don't want to get into
+    // an infinite recursion.
+
+    proc->modules_extracted = true;
+
+    if (-1UL == proc->cr3)
+        return;
+
+
+    // starting from the first vm_area, read vm_file. NOTICE vm_area_struct can be null
+    if (( vma_curr = mm_mmap) == 0)
+        return;
+    
+    int count = 0;
+    while(true)
+    {
+        count ++;
+        // read start of curr vma
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_start,  &vma_vm_start) < 0)
+            goto next;
+
+        // read end of curr vma
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_end,  &vma_vm_end) < 0)
+            goto next;
+
+        DECAF_printf("memory %x:%x ", vma_vm_start, vma_vm_end);    
+
+//zyw obtain the memory area property
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_flags, &vma_flags) < 0)      
+            goto next;
+
+        DECAF_printf("%x ", vma_flags);
+        fprintf(fp, "%x:", vma_vm_start);
+        fprintf(fp, "%x:", vma_vm_end);
+        fprintf(fp, "%x:", vma_flags);
+
+//
+         
+        
+
+        // read the struct* file entry of the curr vma, used to then extract the dentry of the this page
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_file, &vma_file) < 0 || !vma_file)
+            goto next;
+
+        // dentry extraction from the struct* file
+        if (DECAF_read_ptr(env, vma_file + OFFSET_PROFILE.file_dentry, &f_dentry) < 0 || !f_dentry)
+            goto next;
+
+
+
+        // read small names form the dentry
+        if (DECAF_read_mem(env, f_dentry + OFFSET_PROFILE.dentry_d_iname, 32, name) < 0)
+            goto next;
+            
+        // inode struct extraction from the struct* file
+        if (DECAF_read_ptr(env, f_dentry + OFFSET_PROFILE.file_inode, &f_inode) < 0 || !f_inode)
+            goto next;
+
+        // inode_number extraction
+        if (DECAF_read_ptr(env, f_inode + OFFSET_PROFILE.inode_ino, &inode_number) < 0 || !inode_number)
+            goto next;
+
+        name[31] = '\0';    // truncate long string
+
+        // name is invalid, move on the data structure
+        if (strlen(name)==0)
+            goto next;
+
+        fprintf(fp, "%s", name);
+        DECAF_printf("%s ", name);
+
+        
+        if (!strcmp(last_mod_name.c_str(), name))
+        {
+            // extending the module
+            if(last_vm_end == vma_vm_start)
+            {
+                assert(mod);
+                target_ulong new_size = vma_vm_end - mod_vm_start;
+                if (mod->size < new_size)
+                    mod->size = new_size;
+            }
+            // This is a special case when the data struct is BEING populated
+            goto next;
+        }
+
+        char key[32+32];
+        //not extending, a different module
+        mod_vm_start = vma_vm_start;
+
+        sprintf(key, "%u_%s", inode_number, name);
+        mod = VMI_find_module_by_key(key);
+        module_bases.insert(vma_vm_start);
+        if (!mod)
+        {
+            mod = new module();
+            strncpy(mod->name, name, 31);
+            mod->name[31] = '\0';
+            mod->size = vma_vm_end - vma_vm_start;
+            mod->inode_number = inode_number;
+            mod->symbols_extracted = 0;
+            VMI_add_module(mod, key);
+        }
+
+        if(VMI_find_module_by_base(proc->cr3, vma_vm_start) != mod)
+        {
+            VMI_insert_module(proc->pid, mod_vm_start , mod);
+        }
+
+next:
+        fprintf(fp, "\n");
+        DECAF_printf("\n");
+                
+        if (DECAF_read_ptr(env, vma_curr + OFFSET_PROFILE.vma_vm_next, &vma_next) < 0)
+            break;
+
+        if (vma_next == NULL)
+        {
+            break;
+        }
+
+        vma_curr = vma_next;
+        last_mod_name = name;
+        if (mod != NULL)
+        {
+            last_vm_start = vma_vm_start;
+            last_vm_end = vma_vm_end;
+        }
+    }
+   
+
+    unordered_map<uint32_t, module *>::iterator iter = proc->module_list.begin();
+    set<target_ulong> bases_to_remove;
+    for(; iter!=proc->module_list.end(); iter++)
+    {
+        //DEBUG-only
+        //monitor_printf(default_mon,"module %s base %08x \n",iter->second->name,iter->first);
+        if (module_bases.find(iter->first) == module_bases.end())
+            bases_to_remove.insert(iter->first);
+    }
+
+    set<target_ulong>::iterator iter2;
+    for (iter2=bases_to_remove.begin(); iter2!=bases_to_remove.end(); iter2++)
+    {
+        VMI_remove_module(proc->pid, *iter2);
+    }
 }

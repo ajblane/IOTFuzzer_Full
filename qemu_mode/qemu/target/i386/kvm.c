@@ -3027,6 +3027,7 @@ void kvm_arch_remove_all_hw_breakpoints(void)
 
 static CPUWatchpoint hw_watchpoint;
 
+/*
 static int kvm_handle_debug(X86CPU *cpu,
                             struct kvm_debug_exit_arch *arch_info)
 {
@@ -3070,13 +3071,14 @@ static int kvm_handle_debug(X86CPU *cpu,
         cpu_synchronize_state(cs);
         assert(env->exception_injected == -1);
 
-        /* pass to guest */
+        // pass to guest
         env->exception_injected = arch_info->exception;
         env->has_error_code = 0;
     }
 
     return ret;
 }
+*/
 
 void kvm_arch_update_guest_debug(CPUState *cpu, struct kvm_guest_debug *dbg)
 {
@@ -3161,7 +3163,8 @@ int kvm_arch_handle_exit(CPUState *cs, struct kvm_run *run)
     case KVM_EXIT_DEBUG:
         DPRINTF("kvm_exit_debug\n");
         qemu_mutex_lock_iothread();
-        ret = kvm_handle_debug(cpu, &run->debug.arch);
+        //ret = kvm_handle_debug(cpu, &run->debug.arch); //zyw ???????? compilation error with this function
+	ret = 0;
         qemu_mutex_unlock_iothread();
         break;
     case KVM_EXIT_HYPERV:

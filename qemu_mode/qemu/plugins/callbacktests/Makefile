@@ -20,7 +20,7 @@ DEFINES+=-I$(SRC_PATH)/linux-headers -I$(SRC_PATH)/tcg -I$(SRC_PATH)/tcg/$(TARGE
 
 CC=gcc
 CPP=g++
-CFLAGS=-Wall -O2 -g -fPIC -MMD 
+CFLAGS= -Wall -O2 -g -fPIC -MMD 
 # CFLAGS=-Wall -g -fPIC 
 LDFLAGS=-g -shared
 

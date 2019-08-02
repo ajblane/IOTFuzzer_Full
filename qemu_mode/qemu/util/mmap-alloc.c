@@ -14,14 +14,13 @@
 #include "qemu/mmap-alloc.h"
 #include "qemu/host-utils.h"
 
+#include "zyw_config1.h"
+
 #define HUGETLBFS_MAGIC       0x958458f6
 
 #ifdef CONFIG_LINUX
 #include <sys/vfs.h>
 #endif
-
-void *ptr1;
-void *mem_start;
 
 size_t qemu_fd_getpagesize(int fd)
 {
@@ -68,6 +67,31 @@ size_t qemu_mempath_getpagesize(const char *mem_path)
     return getpagesize();
 }
 
+
+void mmap_getconfig(char *keywords, char *res)
+{
+    FILE *fp = fopen("FirmAFL_config", "r");
+    char StrLine[256];
+    while (!feof(fp)) 
+    { 
+        fgets(StrLine,256,fp);
+        char * key = strtok(StrLine, "=");
+        char * value = strtok(NULL, "=");
+        int val_len = strlen(value);
+        if(value[val_len-1] == '\n')
+        {
+            value[val_len-1] = '\0';
+        } 
+        if(strcmp(keywords, key) == 0)
+        {
+            strcpy(res, value);
+            break;
+        }
+    } 
+    fclose(fp);
+}
+
+
 void *qemu_ram_mmap(int fd, size_t size, size_t align, bool shared)
 {
     /*
@@ -91,7 +115,7 @@ void *qemu_ram_mmap(int fd, size_t size, size_t align, bool shared)
     void *ptr = mmap(0, total, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 #endif
     size_t offset;
-
+    void *ptr1;
 
     if (ptr == MAP_FAILED) {
         return MAP_FAILED;
@@ -107,14 +131,18 @@ void *qemu_ram_mmap(int fd, size_t size, size_t align, bool shared)
                 (fd == -1 ? MAP_ANONYMOUS : 0) |
                 (shared ? MAP_SHARED : MAP_PRIVATE),
                 fd, 0);
-	//zyw
-    printf("mmap:%x,%x %d,%d,%x\n", ptr + offset, ptr1, (size/1024)/1024, shared, fd);
-    if(shared) {
-    	FILE *fp = fopen("/home/zyw/tmp/afl_user_mode/image/mapping_table","w");
-    	fprintf(fp, "%lx\n", ptr1);
-        mem_start = ptr1;
-    	fclose(fp);
+#if defined(FUZZ) || defined(MEM_MAPPING)
+    if(shared)
+    {
+        char mapping_filename[256];
+        mmap_getconfig("mapping_filename", mapping_filename);
+        assert(strlen(mapping_filename)>0);
+        
+        FILE *fp = fopen(mapping_filename,"w");
+        fprintf(fp, "%lx\n", ptr1);
+        fclose(fp);
     }
+#endif
     if (ptr1 == MAP_FAILED) {
         munmap(ptr, total);
         return MAP_FAILED;

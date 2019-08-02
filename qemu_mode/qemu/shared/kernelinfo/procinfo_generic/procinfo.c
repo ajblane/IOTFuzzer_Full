@@ -12,7 +12,8 @@
 #include <linux/dcache.h>
 
 // UTS_RELEASE may be defined in different files for different release versions
-#include <generated/utsrelease.h>
+//#include <generated/utsrelease.h>
+#define UTS_RELEASE  "2.6.32.70"
 
 #define OFFSET_OF(type, field) (  (unsigned long)&( ((struct type *)0)->field ) )
 #define JPROBE_TOTAL 8
@@ -163,14 +164,15 @@ static int linuxdrv_init(void)
         OFFSET_OF(vm_area_struct, vm_pgoff)
         );
 
-    printk(KERN_INFO
-        "file_dentry     = %lu\n" /* offset of f_dentry in file */
-        "file_inode      = %lu\n" /* inode of file struct */
-        "dentry_d_name   = %lu\n" /* offset of d_name in dentry */
-        "dentry_d_iname  = %lu\n" /* offset of d_iname in dentry */
-        "dentry_d_parent = %lu\n" /* offset of d_parent in dentry */
-        "ti_task         = %lu\n" /* offset of task in thread_info */
-        "inode_ino   = %lu\n", /* offset of inode index in inode struct */
+    //printk(KERN_INFO
+        //"file_dentry     = %lu\n" /* offset of f_dentry in file */
+        //"file_inode      = %lu\n" /* inode of file struct */
+        //"dentry_d_name   = %lu\n" /* offset of d_name in dentry */
+        //"dentry_d_iname  = %lu\n" /* offset of d_iname in dentry */
+        //"dentry_d_parent = %lu\n" /* offset of d_parent in dentry */
+        //"ti_task         = %lu\n" /* offset of task in thread_info */
+        //"inode_ino   = %lu\n", /* offset of inode index in inode struct */
+/*
         OFFSET_OF(file, f_dentry),
         OFFSET_OF(dentry, d_inode),
         OFFSET_OF(dentry, d_name),
@@ -178,7 +180,8 @@ static int linuxdrv_init(void)
         OFFSET_OF(dentry, d_parent),
         OFFSET_OF(thread_info, task),
         OFFSET_OF(inode,i_ino)
-        );
+*/
+       // );
 
     for(i = 0; i < JPROBE_TOTAL; i++) {
         register_jprobe(&jprobes[i]);

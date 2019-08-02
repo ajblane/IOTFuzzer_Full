@@ -43,6 +43,10 @@ void funcmap_insert_function(const char *module, const char *fname, uint32_t off
 
 extern void parse_function(const char *message);
 
+//zyw
+void print_mapping(const char *name, target_ulong pgd, target_ulong *base, FILE *fp);
+void print_mapping_not_to_file(const char *name, target_ulong pgd, target_ulong *base);
+
 #ifdef __cplusplus
 };
 #endif

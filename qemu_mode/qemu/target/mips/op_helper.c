@@ -25,6 +25,8 @@
 #include "exec/cpu_ldst.h"
 #include "sysemu/kvm.h"
 
+#include "zyw_config1.h"
+extern int tlb_match;
 /*****************************************************************************/
 /* Exceptions processing helpers */
 
@@ -2450,29 +2452,11 @@ void mips_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
     do_raise_exception_err(env, excp, error_code, retaddr);
 }
 
-extern struct timeval tlb_handle_begin_new;
-extern int into_tlb_handle;
-extern int httpd_pgd;
-extern int afl_user_fork;
-#include "zyw_config.h"
-
 void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
               int mmu_idx, uintptr_t retaddr)
 {
     int ret;
-//zyw
-#ifdef TLB_NEW_CAL
-    CPUArchState *env = cs->env_ptr;
-    if(afl_user_fork && into_tlb_handle == 0 && env->active_tc.PC < 0x80000000)
-    {
-      //target_ulong new_pgd = DECAF_getPGD(cs);
-      //if(new_pgd == httpd_pgd){
-          gettimeofday(&tlb_handle_begin_new, NULL);
-          into_tlb_handle = 26; //??????????????
-      //}
-    }
-    
-#endif 
+
     ret = mips_cpu_handle_mmu_fault(cs, addr, access_type, mmu_idx);
     if (ret) {
         MIPSCPU *cpu = MIPS_CPU(cs);
@@ -2481,6 +2465,15 @@ void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
         do_raise_exception_err(env, cs->exception_index,
                                env->error_code, retaddr);
     }
+#ifdef NEW_MAPPING
+    else
+    {
+      if(tlb_match == 1)
+      {
+        cpu_loop_exit_restore(cs, retaddr);
+      }
+    }
+#endif
 }
 
 void mips_cpu_unassigned_access(CPUState *cs, hwaddr addr,

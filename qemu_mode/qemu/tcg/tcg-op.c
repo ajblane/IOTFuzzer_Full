@@ -31,6 +31,8 @@
 #include "trace-tcg.h"
 #include "trace/mem.h"
 
+#include "zyw_config1.h"
+
 /* Reduce the number of ifdefs below.  This assumes that all uses of
    TCGV_HIGH and TCGV_LOW are properly protected by a conditional that
    the compiler can eliminate.  */
@@ -2589,6 +2591,7 @@ void tcg_gen_goto_tb(unsigned idx)
 
 void tcg_gen_lookup_and_goto_ptr(TCGv addr)
 {
+#ifndef FUZZ
     if (TCG_TARGET_HAS_goto_ptr && !qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN)) {
         TCGv_ptr ptr = tcg_temp_new_ptr();
         gen_helper_lookup_tb_ptr(ptr, tcg_ctx.tcg_env, addr);
@@ -2597,6 +2600,9 @@ void tcg_gen_lookup_and_goto_ptr(TCGv addr)
     } else {
         tcg_gen_exit_tb(0);
     }
+#else
+    tcg_gen_exit_tb(0);
+#endif
 }
 
 static inline TCGMemOp tcg_canonicalize_memop(TCGMemOp op, bool is64, bool st)

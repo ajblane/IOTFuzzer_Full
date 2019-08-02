@@ -31,7 +31,7 @@ extern "C"
 // #include "cpu.h" //Not needed - included in DECAF_callback_common.h
 // #include "shared/DECAF_types.h" // not needed either
 #include "shared/DECAF_callback_common.h"
-
+#include "zyw_config1.h"
 int DECAF_is_callback_needed(DECAF_callback_type_t cb_type);
 int DECAF_is_callback_needed_for_opcode(int op);
 int DECAF_is_BlockBeginCallback_needed(gva_t pc);
@@ -45,7 +45,11 @@ void DECAF_invoke_tlb_exec_callback(CPUState *env, gva_t vaddr);
 void helper_DECAF_invoke_nic_rec_callback(const uint8_t * buf, int size, int cur_pos, int start, int stop);
 void helper_DECAF_invoke_nic_send_callback(uint32_t addr, int size, const uint8_t *buf);
 void helper_DECAF_invoke_mem_read_callback(gva_t virt_addr,gpa_t phy_addr, unsigned long value, DATA_TYPE data_type);
-void helper_DECAF_invoke_mem_write_callback(gva_t virt_addr,gpa_t phy_addr,unsigned long haddr, unsigned long value, DATA_TYPE data_type);
+#ifdef STORE_PAGE_FUNC
+void helper_DECAF_invoke_mem_write_callback(gva_t virt_addr,gva_t phy_addr, unsigned long virt_haddr,unsigned long value, DATA_TYPE data_type, int caller_pos);
+#else
+void helper_DECAF_invoke_mem_write_callback(gva_t virt_addr,gpa_t phy_addr,unsigned long value, DATA_TYPE data_type);
+#endif
 void helper_DECAF_invoke_keystroke_callback(int keycode,uint32_t *taint_mark);
 void helper_DECAF_invoke_read_taint_mem(gva_t vaddr,gpa_t paddr,uint32_t size,uint8_t *taint_info);
 void helper_DECAF_invoke_write_taint_mem(gva_t vaddr,gpa_t paddr,uint32_t size,uint8_t *taint_info);

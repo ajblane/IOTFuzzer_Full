@@ -1401,7 +1401,7 @@ if [ "$ARCH" = "unknown" ]; then
   linux_user="no"
 fi
 
-default_target_list=""
+
 
 mak_wilds=""
 
@@ -1418,6 +1418,8 @@ fi
 for config in $mak_wilds; do
     default_target_list="${default_target_list} $(basename "$config" .mak)"
 done
+
+#default_target_list="i386-softmmu"
 
 # Enumerate public trace backends for --help output
 trace_backend_list=$(echo $(grep -le '^PUBLIC = True$' "$source_path"/scripts/tracetool/backend/*.py | sed -e 's/^.*\/\(.*\)\.py$/\1/'))
@@ -6354,7 +6356,6 @@ case "$target_name" in
   ;;
   mips|mipsel)
     TARGET_ARCH=mips
-    mttcg="yes"
     echo "TARGET_ABI_MIPSO32=y" >> $config_target_mak
   ;;
   mipsn32|mipsn32el)

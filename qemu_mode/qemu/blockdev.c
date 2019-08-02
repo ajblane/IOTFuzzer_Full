@@ -4128,29 +4128,3 @@ QemuOptsList qemu_drive_opts = {
         { /* end of list */ }
     },
 };
-
-
-
-
-// AVB, Traverses the disk devices and adds them to DECAF's internal list if
-// they are either SCSI, IDE or default_media
-
-/*
-void DECAF_blocks_init()
-{
-	DriveInfo *dinfo;
-	int index = 0;
-    QTAILQ_FOREACH(dinfo, &drives, next) {
-        if (dinfo->type == IF_DEFAULT || dinfo->type == IF_SCSI || dinfo->type == IF_IDE ) {
-			BlockBackend *blk = blk_by_legacy_dinfo(dinfo);
-			//DECAF_bdrv_open(index,(void *)dinfo->bdrv);
-			DECAF_bdrv_open(index,(void *)blk);
-			++index;
-        }
-    }
-}
-*/
-
-
-
-

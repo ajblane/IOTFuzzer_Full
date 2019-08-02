@@ -64,6 +64,7 @@ extern int VMI_find_pid_by_name_c(const char* proc_name);
 /// @param pid  process pid (output argument)
 /// @return number of modules in this process
 extern int VMI_find_process_by_cr3_c(uint32_t cr3, char proc_name[], size_t len, uint32_t *pid);
+extern int VMI_find_process_by_cr3_all(uint32_t cr3, char proc_name[], size_t len, uint32_t *pid, uint32_t *par_pid);
 /* find process name and CR3 using the PID as search key  */
 extern int VMI_find_process_by_pid_c(uint32_t pid, char proc_name[], size_t len, uint32_t *cr3);
 

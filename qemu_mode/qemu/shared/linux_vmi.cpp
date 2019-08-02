@@ -909,7 +909,7 @@ void linux_vmi_init()
 
 }
 
-/*
+
 gpa_t mips_get_cur_pgd(CPUState *env)
 {
 	const target_ulong MIPS_KERNEL_BASE = 0x80000000;
@@ -926,78 +926,7 @@ gpa_t mips_get_cur_pgd(CPUState *env)
 	pgd &= ~MIPS_KERNEL_BASE;
 	return pgd;
 }
-*/
 
-gpa_t mips_get_cur_pgd(CPUState *env){
-
-    if (unlikely(linux_pte_info.pgd_current_p == 0)) {
-        int i;
-        uint32_t lui_ins, lw_ins, srl_ins;
-        uint32_t address;
-        uint32_t ebase;
-
-        /*
-         * The exact TLB refill code varies depeing on the kernel version
-         * and configuration. Examins the TLB handler to extract
-         * pgd_current_p and the shift required to convert in memory PTE
-         * to TLB format
-         */
-        static struct {
-            struct {
-                uint32_t off;
-                uint32_t op;
-                uint32_t mask;
-            } lui, lw, srl;
-        } handlers[] = {
-            /* 2.6.29+ */
-            {
-                {0x00, 0x3c1b0000, 0xffff0000}, /* 0x3c1b803f : lui k1,%hi(pgd_current_p) */
-                {0x08, 0x8f7b0000, 0xffff0000}, /* 0x8f7b3000 : lw  k1,%lo(k1) */
-                {0x34, 0x001ad182, 0xffffffff}  /* 0x001ad182 : srl k0,k0,0x6 */
-            },
-            /* 3.4+ */
-            {
-                {0x00, 0x3c1b0000, 0xffff0000}, /* 0x3c1b803f : lui k1,%hi(pgd_current_p) */
-                {0x08, 0x8f7b0000, 0xffff0000}, /* 0x8f7b3000 : lw  k1,%lo(k1) */
-                {0x34, 0x001ad142, 0xffffffff}  /* 0x001ad182 : srl k0,k0,0x5 */
-            }
-        };
-
-	ebase = env->CP0_EBase - 0x80000000;
-
-        /* Match the kernel TLB refill exception handler against known code */
-        for (i = 0; i < sizeof(handlers)/sizeof(handlers[0]); i++) {
-            lui_ins = ldl_phys(ebase + handlers[i].lui.off);
-            lw_ins = ldl_phys(ebase + handlers[i].lw.off);
-            srl_ins = ldl_phys(ebase + handlers[i].srl.off);
-            if (((lui_ins & handlers[i].lui.mask) == handlers[i].lui.op) &&
-                ((lw_ins & handlers[i].lw.mask) == handlers[i].lw.op) &&
-                ((srl_ins & handlers[i].srl.mask) == handlers[i].srl.op))
-                break;
-        }
-        if (i >= sizeof(handlers)/sizeof(handlers[0])) {
-                printf("TLBMiss handler dump:\n");
-            for (i = 0; i < 0x80; i+= 4)
-                printf("0x%08x: 0x%08x\n", ebase + i, ldl_phys(ebase + i));
-            cpu_abort(env, "TLBMiss handler signature not recognised\n");
-        }
-
-        address = (lui_ins & 0xffff) << 16;
-        address += (((int32_t)(lw_ins & 0xffff)) << 16) >> 16;
-        if (address >= 0x80000000 && address < 0xa0000000)
-            address -= 0x80000000;
-        else if (address >= 0xa0000000 && address <= 0xc0000000)
-            address -= 0xa0000000;
-        else
-            cpu_abort(env, "pgd_current_p not in KSEG0/KSEG1\n");
-
-        linux_pte_info.pgd_current_p = address;
-        linux_pte_info.softshift = (srl_ins >> 6) & 0x1f;
-    }
-sssss
-    /* Get pgd_current */
-    return ldl_phys(linux_pte_info.pgd_current_p);
-}
 
 
 

@@ -21,11 +21,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "zyw_config1.h"
 #include "qemu/osdep.h"
 #include "qemu-version.h"
 #include "qemu/cutils.h"
 #include "qemu/help_option.h"
 #include "qemu/uuid.h"
+
+#ifdef FUZZ
+extern const char *aflFile;
+#endif
 
 #ifdef CONFIG_SECCOMP
 #include "sysemu/seccomp.h"
@@ -133,16 +138,10 @@ int main(int argc, char **argv)
 #include "sysemu/iothread.h"
 
 #include "shared/DECAF_main_internal.h" // AWH
+extern int callbacktests_init(void);
 
 #define MAX_VIRTIO_CONSOLES 1
 #define MAX_SCLP_CONSOLES 1
-
-//zyw afl
-//extern const char *aflFile; //zyw
-const char * aflFile="/tmp/work";
-extern unsigned long aflPanicAddr;
-extern unsigned long aflDmesgAddr;
-//zyw
 
 static const char *data_dir[16];
 static int data_dir_idx;
@@ -3329,17 +3328,11 @@ int main(int argc, char **argv, char **envp)
                     exit(1);
                 }
                 break;
-//zyw afl
-	    case QEMU_OPTION_aflFile:
+#ifdef FUZZ
+            case QEMU_OPTION_aflFile:
                 aflFile = (char *)optarg;
                 break;
-            case QEMU_OPTION_aflPanicAddr:
-                aflPanicAddr = strtoul(optarg, NULL, 16);
-                break;
-            case QEMU_OPTION_aflDmesgAddr:
-                aflDmesgAddr = strtoul(optarg, NULL, 16);
-		break;
-//zyw
+#endif
             case QEMU_OPTION_kernel:
                 qemu_opts_set(qemu_find_opts("machine"), 0, "kernel", optarg,
                               &error_abort);
@@ -4782,8 +4775,11 @@ int main(int argc, char **argv, char **envp)
     replay_checkpoint(CHECKPOINT_RESET);
     qemu_system_reset(SHUTDOWN_CAUSE_NONE);
     register_global_state();
+#ifdef DECAF
     DECAF_blocks_init(); //zyw
     DECAF_init(); //zyw
+    callbacktests_init();
+#endif
     if (replay_mode != REPLAY_MODE_NONE) {
         replay_vmstate_init();
     } else if (loadvm) {

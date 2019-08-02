@@ -16,6 +16,8 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "zyw_config1.h"
+
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #ifndef _WIN32
@@ -77,10 +79,10 @@
 
 //#define DEBUG_SUBPAGE
 
-//zyw
+#ifdef STORE_PAGE_FUNC
 #include "DECAF_callback_to_QEMU.h"
-extern ram_addr_t qemu_ram_addr_from_host_nofail(void *ptr);
-//
+extern ram_addr_t qemu_ram_addr_from_host(void *ptr);
+#endif
 
 #if !defined(CONFIG_USER_ONLY)
 /* ram_list is read under rcu_read_lock()/rcu_read_unlock().  Writes
@@ -1936,9 +1938,9 @@ static void ram_block_add(RAMBlock *new_block, Error **errp)
         qemu_ram_setup_dump(new_block->host, new_block->max_length);
         qemu_madvise(new_block->host, new_block->max_length, QEMU_MADV_HUGEPAGE);
         /* MADV_DONTFORK is also needed by KVM in absence of synchronous MMU */
-	/* Keep translated memory blocks across forks for AFL!
+#ifndef FUZZ
         qemu_madvise(new_block->host, new_block->max_length, QEMU_MADV_DONTFORK);
-	*/
+#endif
         ram_block_notify_add(new_block->host, new_block->max_length);
     }
 }
@@ -2012,9 +2014,9 @@ RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
     int fd;
     bool created;
     RAMBlock *block;
-//zyw
+#ifdef MEM_MAPPING
     share = 1;
-    printf("mem_path:%s, shared:%d\n", mem_path,share);
+#endif
     fd = file_ram_open(mem_path, memory_region_name(mr), &created, errp);
     if (fd < 0) {
         return NULL;
@@ -2343,12 +2345,11 @@ static void notdirty_mem_write(void *opaque, hwaddr ram_addr,
                                uint64_t val, unsigned size)
 {
 
-    //zyw
-
+#ifdef STORE_PAGE_FUNC
     if(DECAF_is_callback_needed(DECAF_MEM_WRITE_CB))
-        helper_DECAF_invoke_mem_write_callback(0,ram_addr, qemu_map_ram_ptr(NULL, ram_addr), val ,1);
+        helper_DECAF_invoke_mem_write_callback(0,ram_addr, qemu_map_ram_ptr(NULL, ram_addr), val ,1, 1);
+#endif
 
-    
     bool locked = false;
 
     assert(tcg_enabled());
@@ -2964,11 +2965,10 @@ static MemTxResult address_space_write_continue(AddressSpace *as, hwaddr addr,
         } else {
             /* RAM case */
             ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
-//zyw
-           
+#ifdef STORE_PAGE_FUNC
             if(DECAF_is_callback_needed(DECAF_MEM_WRITE_CB))
-                helper_DECAF_invoke_mem_write_callback(0,qemu_ram_addr_from_host_nofail(ptr), ptr, val ,1);
-
+                helper_DECAF_invoke_mem_write_callback(0,qemu_ram_addr_from_host(ptr), ptr, val ,1, 1);
+#endif
             memcpy(ptr, buf, l);
             invalidate_and_set_dirty(mr, addr1, l);
         }

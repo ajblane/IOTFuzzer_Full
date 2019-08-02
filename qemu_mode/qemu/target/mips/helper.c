@@ -24,6 +24,13 @@
 #include "exec/log.h"
 #include "hw/mips/cpudevs.h"
 
+#include "zyw_config1.h"
+extern int into_normal_execution;
+extern target_ulong handle_addr;
+extern int tlb_match;
+extern int write_vaddr;
+extern int write_paddr;
+
 enum {
     TLBRET_XI = -6,
     TLBRET_RI = -5,
@@ -534,9 +541,6 @@ hwaddr mips_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 }
 #endif
 
-extern int httpd_pgd;
-extern int afl_user_fork;
-
 int mips_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
                               int mmu_idx)
 {
@@ -579,19 +583,21 @@ int mips_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
         tlb_set_page(cs, address & TARGET_PAGE_MASK,
                      physical & TARGET_PAGE_MASK, prot | PAGE_EXEC,
                      mmu_idx, TARGET_PAGE_SIZE);
-
-//  
-/*    
-        if(afl_user_fork && address < 0x80000000)
+#ifdef NEW_MAPPING
+        if(into_normal_execution == 1)
         {
-            target_ulong new_pgd = DECAF_getPGD(cs);
-            if(new_pgd == httpd_pgd){
-                DECAF_printf("tlb_mapping:%x,%x,%x\n", address & TARGET_PAGE_MASK, physical & TARGET_PAGE_MASK, rw);
-            }
-         
+            if(address < 0x80000000)
+            {     
+                if(address == handle_addr)
+                {
+                    DECAF_printf("tlb set:%lx, %lx\n", address, physical); 
+                    write_vaddr = address;
+                    write_paddr = physical;
+                    tlb_match = 1;
+                }      
+            }       
         }
-*/
-//
+#endif
         ret = 0;
     } else if (ret < 0)
 #endif
@@ -994,7 +1000,6 @@ void mips_cpu_do_interrupt(CPUState *cs)
         } else {
             env->active_tc.PC = env->CP0_EBase & ~0xfff;
         }
-
         env->active_tc.PC += offset;
         set_hflags_for_handler(env);
         env->CP0_Cause = (env->CP0_Cause & ~(0x1f << CP0Ca_EC)) | (cause << CP0Ca_EC);

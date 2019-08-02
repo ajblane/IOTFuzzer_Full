@@ -1634,10 +1634,8 @@ static inline void cpu_load_efer(CPUX86State *env, uint64_t val)
     }
 }
 
-static inline MemTxAttrs cpu_get_mem_attrs(CPUX86State *env)
-{
-    return ((MemTxAttrs) { .secure = (env->hflags & HF_SMM_MASK) != 0 });
-}
+MemTxAttrs cpu_get_mem_attrs(CPUX86State *env); //zyw
+
 
 static inline int32_t x86_get_a20_mask(CPUX86State *env)
 {
@@ -1719,11 +1717,4 @@ bool cpu_is_bsp(X86CPU *cpu);
 
 void x86_cpu_xrstor_all_areas(X86CPU *cpu, const X86XSaveArea *buf);
 void x86_cpu_xsave_all_areas(X86CPU *cpu, X86XSaveArea *buf);
-
-
-#include "exec/exec-all.h" // zyw
-
-
 #endif /* I386_CPU_H */
-
-

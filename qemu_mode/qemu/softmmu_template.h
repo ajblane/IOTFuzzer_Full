@@ -21,6 +21,11 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "zyw_config1.h"
+#ifdef STORE_PAGE_FUNC
+#include "DECAF_callback_to_QEMU.h"
+#endif
+
 #if DATA_SIZE == 8
 #define SUFFIX q
 #define LSUFFIX q
@@ -44,12 +49,6 @@
 #else
 #error unsupported data size
 #endif
-
-
-//zyw
-#include "DECAF_callback_to_QEMU.h"
-extern ram_addr_t qemu_ram_addr_from_host_nofail(void *ptr);
-//
 
 
 /* For the benefit of TCG generated code, we want to avoid the complication
@@ -339,13 +338,11 @@ void helper_le_st_name(CPUArchState *env, target_ulong addr, DATA_TYPE val,
     }
 
     haddr = addr + env->tlb_table[mmu_idx][index].addend;
-
-    //zyw
-
+#ifdef STORE_PAGE_FUNC
     if(DECAF_is_callback_needed(DECAF_MEM_WRITE_CB))
-        helper_DECAF_invoke_mem_write_callback(addr,qemu_ram_addr_from_host_nofail(haddr),haddr, 0 ,1);
+        helper_DECAF_invoke_mem_write_callback(addr,qemu_ram_addr_from_host(haddr),haddr, 0 ,1, 3);
+#endif
 
-    
 #if DATA_SIZE == 1
     glue(glue(st, SUFFIX), _p)((uint8_t *)haddr, val);
 #else
@@ -422,10 +419,10 @@ void helper_be_st_name(CPUArchState *env, target_ulong addr, DATA_TYPE val,
     }
 
     haddr = addr + env->tlb_table[mmu_idx][index].addend;
-//zyw
+#ifdef STORE_PAGE_FUNC
     if(DECAF_is_callback_needed(DECAF_MEM_WRITE_CB))
-        helper_DECAF_invoke_mem_write_callback(addr,qemu_ram_addr_from_host_nofail(haddr),haddr, 0 ,1);
-
+        helper_DECAF_invoke_mem_write_callback(addr,qemu_ram_addr_from_host(haddr),haddr, 0 ,1, 3);
+#endif
     glue(glue(st, SUFFIX), _be_p)((uint8_t *)haddr, val);
 }
 #endif /* DATA_SIZE > 1 */

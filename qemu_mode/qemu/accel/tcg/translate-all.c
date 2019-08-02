@@ -1089,7 +1089,7 @@ void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr)
     if (tb->page_addr[1] != -1 && tb->page_addr[1] != page_addr) {
         p = page_find(tb->page_addr[1] >> TARGET_PAGE_BITS);
         tb_page_remove(&p->first_tb, tb);
-        invalidate_page_bitmap(p);
+        invalidate_page_bitmap(p);   
     }
 
     /* remove the TB from the hash list */

@@ -282,7 +282,7 @@ static void update_kernel_modules(CPUState *env, target_ulong vaddr) {
 		//uniquely identify a module.
 		//We do not use full module name, because the same module can be referenced through
 		//different full paths: e.g., c://windows/system32 and /systemroot/windows/system32.
-		if(get_IMAGE_NT_HEADERS(env->cr[3], base, &nth, env) < 0)
+		if(get_IMAGE_NT_HEADERS(((CPUArchState *)env->env_ptr)->cr[3], base, &nth, env) < 0)
 			goto next;
 
 		snprintf(key, sizeof(key)-1, "%s:%08x", base_name, nth.OptionalHeader.CheckSum);
@@ -434,7 +434,7 @@ static void extract_export_table(IMAGE_NT_HEADERS *nth, uint32_t cr3, uint32_t b
 				"i=%d name=%s index=%d func=%08x\n", i, name, index, func_addrs[index]); */
 
 	}
-	monitor_printf(default_mon, "%s: Total exports = %d, %d\n", mod->fullname, ied.NumberOfFunctions, ied.NumberOfNames);
+	//monitor_printf(default_mon, "%s: Total exports = %d, %d\n", mod->fullname, ied.NumberOfFunctions, ied.NumberOfNames);
 
 	mod->symbols_extracted = true;
 
@@ -484,11 +484,12 @@ static void retrieve_missing_symbols(process *proc, CPUState *_env)
 
 static inline void get_new_modules(CPUState* _env, process * proc, target_ulong vaddr)
 {
-	uint32_t base = 0, self = 0, pid = 0;
+	CPUArchState * env_ptr = (CPUArchState *) _env->env_ptr;
+ 	uint32_t base = 0, self = 0, pid = 0;
 	if (proc == kernel_proc) {
 		update_kernel_modules(_env, vaddr);
 	} else {
-		base = _env->segs[R_FS].base;
+		base = env_ptr->segs[R_FS].base;
 		DECAF_read_mem(_env, base + 0x18, 4, &self);
 
 		if (base != 0 && base == self) {
@@ -505,9 +506,10 @@ static inline void get_new_modules(CPUState* _env, process * proc, target_ulong 
 
 static void tlb_call_back(DECAF_Callback_Params *temp)
 {
-	CPUState *ourenv = temp->tx.env;
+	CPUState *ourenv =  temp->tx.env;
+	CPUArchState * env_ptr = (CPUArchState *) ourenv->env_ptr;
 	target_ulong vaddr = temp->tx.vaddr;
-	uint32_t cr3 = ourenv->cr[3];
+	uint32_t cr3 = env_ptr->cr[3];
 	process *proc;
 
 	if(DECAF_is_in_kernel(ourenv)) {
@@ -540,16 +542,19 @@ static uint32_t get_kpcr(void)
 {
 	uint32_t kpcr = 0, selfpcr = 0;
 	CPUState *env;
+	
 
-	for (env = first_cpu; env != NULL; env = env->next_cpu) {
+	//for (env = first_cpu; env != NULL; env = env->next_cpu) {
+	env = first_cpu;
+	CPU_FOREACH(first_cpu){
 		if (env->cpu_index == 0) {
 			break;
 		}
 	}
+	CPUArchState * env_ptr = (CPUArchState *)env->env_ptr;
+	DECAF_read_mem(env, env_ptr->segs[R_FS].base + 0x1c, 4, &selfpcr);
 
-	DECAF_read_mem(env, env->segs[R_FS].base + 0x1c, 4, &selfpcr);
-
-	if (selfpcr == env->segs[R_FS].base) {
+	if (selfpcr == env_ptr->segs[R_FS].base) {
 		kpcr = selfpcr;
 	}
 
@@ -603,11 +608,12 @@ static uint32_t get_ntoskrnl_internal(uint32_t curr_page, CPUState *env) {
 
 uint32_t get_ntoskrnl(CPUState *_env) {
 	uint32_t ntoskrnl_base = 0;
-	ntoskrnl_base = get_ntoskrnl_internal(_env->sysenter_eip & 0xfffff000, _env);
+	CPUArchState * env_ptr = (CPUArchState *) _env->env_ptr;
+	ntoskrnl_base = get_ntoskrnl_internal(env_ptr->sysenter_eip & 0xfffff000, _env);
 	if (ntoskrnl_base)
 		goto found;
 
-	ntoskrnl_base = get_ntoskrnl_internal(_env->eip & 0xfffff000, _env);
+	ntoskrnl_base = get_ntoskrnl_internal(env_ptr->eip & 0xfffff000, _env);
 	if (ntoskrnl_base)
 		goto found;
 	return 0;
@@ -620,8 +626,8 @@ found:
 static uint32_t probe_windows(CPUState *_env)
 {
 	uint32_t base;
-
-	if (_env->eip > 0x80000000 && _env->segs[R_FS].base > 0x80000000) {
+	CPUArchState * env_ptr = (CPUArchState *) _env->env_ptr;
+	if (env_ptr->eip > 0x80000000 && env_ptr->segs[R_FS].base > 0x80000000) {
 		gkpcr = get_kpcr();
 		if (gkpcr != 0) {
 			//DECAF_unregister_callback(DECAF_INSN_END_CB, insn_handle);
@@ -629,11 +635,9 @@ static uint32_t probe_windows(CPUState *_env)
 
 			get_os_version(_env);
 			base = get_ntoskrnl(_env);
-			monitor_printf(default_mon,
-					"The base address of ntoskrnl.exe is %08x\n", base);
+			//monitor_printf(default_mon, "The base address of ntoskrnl.exe is %08x\n", base);
 			if (!base) {
-				monitor_printf(default_mon,
-						"Unable to locate kernel base. Stopping VM...\n");
+				//monitor_printf(default_mon, "Unable to locate kernel base. Stopping VM...\n");
 				//vm_stop(RUN_STATE_DEBUG);
 				return 0;
 			} else {
@@ -682,8 +686,9 @@ void check_procexit(void *)
 {
 	/* AWH - cpu_single_env is invalid outside of the main exec thread */
 	CPUState *env = /* AWH cpu_single_env ? cpu_single_env :*/ first_cpu;
-	qemu_mod_timer(recon_timer,
-			qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() * 10);
+	//zyw name changed(defined in scripts/switch-timer-api)
+	//qemu_mod_timer(recon_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() * 10);
+	//timer_mod(recon_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + get_ticks_per_sec() * 10);
 	//monitor_printf(default_mon, "Checking for proc exits...\n");
 
 	uint32_t end_time[2];
@@ -718,9 +723,8 @@ void win_vmi_init()
 	kernel_proc->pid = 0;
 	VMI_create_process(kernel_proc);
 
-	recon_timer = qemu_new_timer_ns(vm_clock, check_procexit, 0);
-	qemu_mod_timer(recon_timer,
-			qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() * 30);
+	recon_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, check_procexit, 0);
+	//timer_mod(recon_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + get_ticks_per_sec() * 30);
 
 }
 

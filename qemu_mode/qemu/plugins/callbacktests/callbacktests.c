@@ -15,6 +15,8 @@ http://code.google.com/p/decaf-platform/
  * @author Lok Yan
  * @date Oct 18 2012
  */
+#include "zyw_config1.h"
+#include "zyw_config2.h"
 #include "qemu/osdep.h"
 #include "cpu.h"
 
@@ -24,8 +26,6 @@ http://code.google.com/p/decaf-platform/
 #include "vmi_callback.h"
 #include "utils/Output.h"
 #include "vmi_c_wrapper.h"
-#include "afl-qemu-cpu-inl.h"
-
 
 //http socket
 #include <stdio.h>
@@ -42,23 +42,24 @@ http://code.google.com/p/decaf-platform/
 
 #include <sys/time.h>
 #include "function_map.h"
-//zyw need to change 
+ 
+
+#ifdef STORE_PAGE_FUNC
+
+int in_httpd = 0;
+struct timeval store_page_start;
+struct timeval store_page_end;
+double full_store_page_time;
+#endif
+
+#define MAX_STACK_SIZE 5000
+uint32_t sys_call_ret_stack[2][MAX_STACK_SIZE];
+uint32_t sys_call_entry_stack[2][MAX_STACK_SIZE];
+uint32_t cr3_stack[2][MAX_STACK_SIZE];
+uint32_t stack_top[2];
 
 
 
-char *program_analysis = "sample";
-//char *program_analysis = "hedwig.cgi";
-//char *program_analysis = "httpd";
-//char *program_analysis = "dnsmasq";
-//char *program_analysis = "dropbear"; 
-//char *program_analysis = "httpd";
-//char *program_analysis = "jjhttpd";
-//char *program_analysis = "lighttpd";
-
-
-
-int first_or_new_pgd = 1; //0 first 1 new; // 0 tplink httpd
-#define multiple_process //Trendnet jjhttpd Netgear lighttpd
 
 static struct timeval tv_api;
 static char old_api[100];
@@ -105,14 +106,38 @@ static int target_main_address[PRO_MAX_NUM];
 
 static int target_index = 0; //the number of target program
 
-//zyw
-extern int helper_flag;
-extern int helper_ASID[2];
-
-//zyw
-extern uint32_t httpd_pgd;
-extern int pgd_changed;
 int first_pgd = 0;
+
+target_ulong program_pgd[100];
+int pgd_index = -1;
+
+void pgd_push(target_ulong pgd)
+{
+	pgd_index++;
+	program_pgd[pgd_index] = pgd;
+
+}
+
+target_ulong pgd_pop()
+{
+	target_ulong pgd =  program_pgd[pgd_index];
+	pgd_index--;
+	return pgd;
+}
+
+target_ulong get_current_pgd()
+{	
+	if(pgd_index==-1)
+	{
+		return 0xffffffff;
+	}
+	else
+	{
+		return program_pgd[pgd_index];
+	}
+	
+}
+
 
 
 int target_exist(char *name){
@@ -164,13 +189,6 @@ FILE * keylogger_log=DECAF_NULL_HANDLE;
 char modname_t[512];
 char func_name_t[512];
 
-extern uint32_t sys_call_ret_stack[2][MAX_STACK_SIZE];
-extern uint32_t sys_call_entry_stack[2][MAX_STACK_SIZE];
-extern uint32_t cr3_stack[2][MAX_STACK_SIZE];
-extern uint32_t stack_top[2];
-
-extern uint32_t saved_stack[2][MAX_STACK_SIZE];
-extern uint32_t saved_stack_top[2];
 
 void check_call(DECAF_Callback_Params *param, int index)
 {
@@ -224,7 +242,7 @@ void check_ret(DECAF_Callback_Params *param, int index)
 			}
 			//DECAF_printf("checke ret done work\n");
 			//snapshot_endWork(32);
-			endWork(32);
+			//endWork(32);
 			//doneWork(32);
 		}
 	}
@@ -232,22 +250,7 @@ void check_ret(DECAF_Callback_Params *param, int index)
 }
 
 
-/*
-void stopWork(){
-	stopTrace();
-	DECAF_printf("time is up\n");
-	afl_fork = 0;
-	targetpid[1]=0;
-	targetcr3[1]=0;	
-	//snapshot_endWork(0);
-	endWork(0);
-}
-*/
 
-
-
-
-int after = 0;
 extern int afl_user_fork;
 extern struct timeval loop_begin;
 extern struct timeval loop_end;
@@ -257,10 +260,186 @@ extern int into_syscall;
 target_ulong feed_input_addr = 0;
 int feed_input_time = 0;
 
+extern int libuclibc_addr;
 static void do_block_begin(DECAF_Callback_Params* param)
 {
-	CPUArchState *cpu = param->bb.env->env_ptr;
+	CPUState *cpu = param->bb.env;
+	CPUArchState *env = cpu->env_ptr;
 	target_ulong pc = param->bb.tb->pc;
+#ifdef TARGET_MIPS
+	target_ulong ra = env->active_tc.gpr[31];
+#elif defined(TARGET_ARM)
+	target_ulong ra = 0;
+#endif
+
+
+#ifdef SNAPSHOT_SYNC
+	if(afl_user_fork)
+	{
+		target_ulong pgd = DECAF_getPGD(cpu);
+		if(pgd == httpd_pgd)
+		{
+			in_httpd = 1;
+		}
+		else
+		{
+			in_httpd = 0;
+		}
+	}
+#endif
+#ifdef TARGET_MIPS
+	/*
+	if(afl_user_fork && (pc == 0x8018da50 || pc == 0x8018dc38))
+    {
+    	DECAF_printf("do_sys_open : %x\n", pc);
+    	if(pc == 0x8018da50)
+    	{
+    		char name[100];
+    		DECAF_read_mem(cpu, env->active_tc.gpr[5], 100, name);
+    		DECAF_printf("do_sys_open: %s\n", name);
+    	}
+    }
+
+    else if(afl_user_fork && (pc == 0x8019bb4c || pc == 0x8019bbd8))
+    {
+    	DECAF_printf("do_filp_open : %x\n", pc);
+    	if(pc == 0x8019bb4c)
+    	{
+    		char name[100];
+    		DECAF_read_mem(cpu, env->active_tc.gpr[5], 100, name);
+    		DECAF_printf("do_flip_open: %s\n", name);
+    	}
+    }
+
+    else if(afl_user_fork && (pc == 0x8019b6e0 || pc == 0x8019ba68))
+    {
+    	DECAF_printf("path_openat : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x8019ae08 || pc == 0x8019b57c))
+    {
+    	DECAF_printf("do_last_isra_37 : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x80197ecc || pc == 0x8019825c))
+    {
+    	DECAF_printf("do_lookup : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x80197c1c))
+    {
+    	DECAF_printf("not to d_alloc_and_lookup : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x80197bb0 || pc == 0x80197c34))
+    {
+    	DECAF_printf("d_alloc_and_lookup : %x\n", pc);
+    	
+    }
+    else if(afl_user_fork && pc == 0x80197be8)
+	{
+		int next_addr;
+    	int addr2;
+    	int addr1 = env->active_tc.gpr[17] + 0x10;
+    	DECAF_read_ptr(cpu, addr1, &addr2);
+    	DECAF_read_ptr(cpu, addr2, &next_addr);
+    	DECAF_printf("d_alloc_and_lookup ########next addr %x, %x,%x\n", addr1, addr2, next_addr);
+	}
+
+    else if(afl_user_fork && (pc == 0x801a1ee0 || pc == 0x801a1f38))
+    {
+    	DECAF_printf("d_alloc : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x801a1c10 || pc == 0x801a1d4c))
+    {
+    	DECAF_printf("__d_alloc : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x801ff554 || pc == 0x801ff5f8))
+    {
+    	DECAF_printf("ext2_lookup : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x801fe0f4 || pc == 0x801fe6b0))
+    {
+    	DECAF_printf("ext2_iget : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x801fd750 || pc == 0x801fd8f0))
+    {
+    	DECAF_printf("ext2_get_inode : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x801b6a90 || pc == 0x801b6b7c))
+    {
+    	DECAF_printf("_bread : %x\n", pc);
+    }
+    
+    else if(afl_user_fork && (pc == 0x801b44bc))
+    {
+    	DECAF_printf("wait_on_buffer : %x\n", pc);
+    }
+
+    else if(afl_user_fork && (pc == 0x801b44d0))
+    {
+    	DECAF_printf("buffer locked then sleep on : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc >= 0x805709a0 && pc <= 0x80570a24))
+    {
+    	DECAF_printf("out of line wait on bit : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc >= 0x805708b8 && pc <= 0x8057099c))
+    {
+    	DECAF_printf("wait on bit : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc == 0x801b441c))
+    {
+    	DECAF_printf("sleep_on_buffer : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc >= 0x8057049c && pc <= 0x8057052c))
+    {
+    	DECAF_printf("io_schedule : %x\n", pc);
+    }
+	if(afl_user_fork && pc > tmp_libuclibc_addr && pc  < tmp_libuclibc_addr + 0x60000)
+	{
+		DECAF_printf("lib pc: %x\n", pc - tmp_libuclibc_addr);
+	}
+    else if(afl_user_fork && (pc >= 0x80128264 && pc <= 0x80128348))
+    {
+    	DECAF_printf("sys_wait4 : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc >= 0x80127288 && pc <= 0x80127448))
+    {
+    	DECAF_printf("do_wait : %x\n", pc);
+    }
+  	else if(afl_user_fork && (pc >= 0x80570fbc && pc <= 0x805710c8))
+    {
+    	DECAF_printf("do_nanosleep : %x\n", pc);
+    }
+    else if(afl_user_fork && (pc >= 0x80143234 && pc <= 0x8014336c))
+    {
+    	DECAF_printf("hrtimer_nanosleep: %x\n", pc);
+    }
+    else if(afl_user_fork && (pc >= 0x80143370 && pc <= 0x801433ec))
+    {
+    	DECAF_printf("sys_nanosleep: %x\n", pc);
+    }
+    else if(afl_user_fork && (pc >= 0x80570434 && pc <= 0x8057049c))
+    {
+    	DECAF_printf("schedule: %x\n", pc);
+    }
+    else if(afl_user_fork && (pc >= 0x8056f6ec && pc <= 0x80570384))
+    {
+    	DECAF_printf("__schedule: %x\n", pc);
+    }
+	
+    if(afl_user_fork && pc == 0x8057035c)
+    {
+    	DECAF_printf("########__schedule next pc %x\n", env->active_tc.gpr[31]);
+    }
+    if(afl_user_fork && pc == 0x801037bc)
+    {
+    	DECAF_printf("TIF_NEED_RESCHED set\n", pc);
+    }
+     if(afl_user_fork && pc == 0x80103794)
+    {
+    	DECAF_printf("TIF_NEED_RESCHED not set\n", pc);
+    }
+    */	
+ #endif   
+	return;
 	target_ulong pgd = DECAF_getPGD(param->bb.env);
 	int index = targetcr3_exist(pgd);
 	char cur_process[512];
@@ -273,39 +452,35 @@ static void do_block_begin(DECAF_Callback_Params* param)
 		{
 			targetcr3[index] = pgd;
 			targetpid[index] = pid;
+#ifdef STORE_PAGE_FUNC
+			in_httpd = 1;
+#endif
 		}
 		else{
-			//if(helper_flag == 1) DECAF_printf("pid:%d,proc:%s\n", pid, cur_process);
+#ifdef STORE_PAGE_FUNC
+			in_httpd = 0;
+#endif
 			return;
 		}
 	}
 	else{
 		index = target_exist(cur_process); //sometimes the pgd of child program is the same as parent program. need to recalculate the index
-		if(index == -1) return; // cur_process is null, pid is 0
+		if(index == -1) 
+		{
+#ifdef STORE_PAGE_FUNC
+			in_httpd = 0;
+#endif
+			return; // cur_process is null, pid is 0
+		}
 	}
 
+#ifdef STORE_PAGE_FUNC
+	in_httpd = 1;
+#endif
 	
 	char modname[512];
 	char functionname[512];
-/*
-	if(pgd_changed)
-	{
-		user_stack_count = 0;
-	}
-*/
 
-	if(pc >= 0x80000000 && kernel_stack_count == 0)
-	{
-		kernel_stack_count = 1;
-		kernel_origpt = cpu->active_tc.gpr[29];
-		DECAF_printf("%s kernel stack:%x\n",cur_process, kernel_origpt);
-	}
-	if(pc < 0x70000000 && user_stack_count == 0)
-	{
-		user_stack_count = 1;
-		DECAF_printf("user_pc:%x, pgd:%x\n",cpu->active_tc.PC, pgd);
-	}
-	
 
 	if(pc > 0x80000000)	
 		return;
@@ -519,10 +694,15 @@ int add_and_show(int phys_addr)
     }
 }
 
+
+#ifdef STORE_PAGE_FUNC
+
+
 static void fuzz_mem_write(DECAF_Callback_Params *dcp)
 {
 	if(afl_user_fork == 1)
 	{
+		uint32_t next_page = 0;
 		uint32_t virt_addr = dcp->mw.vaddr;
 		uint32_t phys_addr = dcp->mw.paddr; 
 		uintptr_t host_addr = dcp->mw.haddr; //64bit
@@ -530,23 +710,43 @@ static void fuzz_mem_write(DECAF_Callback_Params *dcp)
 		unsigned long value = dcp->mw.value;
 		uintptr_t page_host_addr = host_addr & 0xfffffffffffff000;
 		int dl = data_length(value);
+		if(dl>0x1000)
+		{
+			printf("data too long, cross page\n");
+			exit(32);
+		}
 		if ((virt_addr & 0xfff) + dl > 0x1000)
 	    { 
-	        printf("cross page:lx\n", virt_addr);
-	        exit(32);
+	        DECAF_printf("cross page:%lx, len:%d\n\n\n\n\n", virt_addr, dl);
+	        next_page = (virt_addr & 0xfffff000) + 0x1000;
+	        //exit(32);
+	       	
 	    } 
-	    //if(value == 0) printf("kernel store:%lx\n", phys_addr);
-	    //if((phys_addr & 0xfff000) == 0x6e9000) { printf("meet physica:%x\n", phys_addr);}
-	    //if((phys_addr & 0xfff000) == 0x72d000) { printf("meet physica:%x\n", phys_addr);}
-#ifndef QEMU_SNAPSHOT
-	    //add_and_show(phys_addr & 0xfffff000);
-		store_page(virt_addr & 0xfffff000, page_host_addr, 1);
+// memory consistence
+#ifdef SNAPSHOT_SYNC
+	    if(in_httpd && (virt_addr<0x80000000))
+	    {
+
+	    	int ifexist = if_physical_exist(phys_addr & 0xfffff000);
+	    	if(ifexist)
+	    	{
+	    		return;
+	    	}
+	    	add_physical_page(phys_addr & 0xfffff000);
+	    }
 #endif
-		//store_addr(virt_addr, phys_addr, host_addr, dt, value);
+	    gettimeofday(&store_page_start, NULL);
+	    //if(virt_addr > 0x80000000)
+	    	//DECAF_printf("@@@@@@@@@@@@@@@@ fuzz_mem_write %x\n", virt_addr);
+		store_page(virt_addr & 0xfffff000, page_host_addr, in_httpd); //in
+		gettimeofday(&store_page_end, NULL);
+    	full_store_page_time += (double)store_page_end.tv_sec - store_page_start.tv_sec + (store_page_end.tv_usec - store_page_start.tv_usec)/1000000.0;
+
 
 	}
-}
 
+}
+#endif
 
 
 void do_callbacktests(Monitor* mon, const QDict* qdict)
@@ -575,17 +775,19 @@ static void callbacktests_loadmainmodule_callback(VMI_Callback_Params* params)
 	{
 		return;
 	}
-	int index = target_exist(procname);
-	if (index != -1)
+	//int index = target_exist(procname);
+	//if (index != -1)
+	if(strcmp(procname,program_analysis) == 0)
 	{
-		helper_flag = 1;
 		gettimeofday(&tv_api, NULL);
 		DECAF_printf("\nProcname:%s/%d,pid:%d, cr3:%x start, time:%d,%d\n",procname, index, pid, params->cp.cr3, tv_api.tv_sec, tv_api.tv_usec);
-		targetpid[index] = pid;
-		targetcr3[index] = params->cp.cr3;
+		//targetpid[index] = pid;
+		//targetcr3[index] = params->cp.cr3;
 
+/*
 		if(strcmp(procname,program_analysis) == 0 && first_pgd == 0)
 		{  
+
 			if(first_or_new_pgd == 0) 
 				first_pgd = 1; 
 #ifdef multiple_process
@@ -593,8 +795,14 @@ static void callbacktests_loadmainmodule_callback(VMI_Callback_Params* params)
 				first_or_new_pgd--;
 #endif
 			httpd_pgd = targetcr3[index]; 
-			pgd_changed = 1;
 		}
+*/
+		
+		pgd_push(params->cp.cr3);
+		httpd_pgd = get_current_pgd();
+		DECAF_printf("cur pgd:%x\n", httpd_pgd);
+
+
 	}
 }
 
@@ -614,17 +822,20 @@ static void callbacktests_removeproc_callback(VMI_Callback_Params* params)
 	{
 		return;
 	}
-	int index = target_exist(procname);
-	if (index != -1)
+	//int index = target_exist(procname);
+	//if (index != -1)
+	if(strcmp(procname,program_analysis) == 0)
 	{
-		stack_top[index] = 0; //??????????????????????????? http end
+		//stack_top[index] = 0; //??????????????????????????? http end
 		gettimeofday(&tv_api, NULL);
 		DECAF_printf("\nProcname:%s/%d,pid:%d, cr3:%x end, time:%d,%d\n",procname, index, pid, params->rp.cr3,  tv_api.tv_sec, tv_api.tv_usec);
 		//targetpid[index] = 0;
 		//targetcr3[index] = 0;
-		kernel_stack_count = 0;
-		user_stack_count = 0;
 
+		target_ulong tmp_pgd = pgd_pop();
+		assert(tmp_pgd==params->rp.cr3);
+		httpd_pgd = get_current_pgd();
+		DECAF_printf("cur pgd:%x\n", httpd_pgd);
 
 	}
 
@@ -652,6 +863,7 @@ static int callbacktests_init(void)
 {
 	DECAF_output_init(NULL);
 	DECAF_printf("Hello World\n");
+	program_start = 1;
 
 	target_main_address[0] = 0x40a218; //httpd
 	target_main_address[1] = 0x4023e0; //hedwig.cgi
@@ -662,8 +874,9 @@ static int callbacktests_init(void)
 	removeproc_handle = VMI_register_callback(VMI_REMOVEPROC_CB, &callbacktests_removeproc_callback, NULL);
 	block_begin_handle = DECAF_registerOptimizedBlockBeginCallback(&do_block_begin, NULL, INV_ADDR, OCB_ALL);
 	block_end_handle = DECAF_registerOptimizedBlockEndCallback(&do_block_end, NULL, INV_ADDR, INV_ADDR);
+#ifdef STORE_PAGE_FUNC
 	mem_write_cb_handle = DECAF_register_callback(DECAF_MEM_WRITE_CB,fuzz_mem_write,NULL);
-					
+#endif					
 	for(int i = 0; i < PRO_MAX_NUM; i++){	
 		targetcr3[i] = 0;
 		targetpid[i] = 0;
@@ -714,12 +927,10 @@ static mon_cmd_t callbacktests_term_cmds[] = {
 #endif
 
 
-extern void stopWork();
 plugin_interface_t* init_plugin(void)
 {
   callbacktests_interface.mon_cmds = callbacktests_term_cmds;
   callbacktests_interface.plugin_cleanup = &callbacktests_cleanup;
-  signal(SIGALRM, stopWork);
   //initialize the plugin
   callbacktests_init();
   return (&callbacktests_interface);

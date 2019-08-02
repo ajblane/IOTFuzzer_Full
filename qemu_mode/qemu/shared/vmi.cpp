@@ -393,7 +393,7 @@ int VMI_remove_process(uint32_t pid)
 
 
 
-int VMI_insert_module(uint32_t pid, target_ulong base, module *mod)
+int VMI_insert_module(uint32_t pid, uint32_t base, module *mod)
 {
 	VMI_Callback_Params params;
 	params.lm.pid = pid;
@@ -530,3 +530,26 @@ int VMI_extract_symbols(module *mod, target_ulong base)
 
 
 
+//zyw
+void print_mapping(const char *name, target_ulong pgd, target_ulong *base, FILE *fp)
+{
+	unordered_map < uint32_t, process * >::iterator iter_p = process_map.find(pgd);
+	if (iter_p == process_map.end())
+		return NULL;
+
+	process *proc = iter_p->second;
+	traverse_mmap_new(current_cpu, proc, fp);
+    return NULL;
+}
+
+//zyw
+void print_mapping_not_to_file(const char *name, target_ulong pgd, target_ulong *base)
+{
+	unordered_map < uint32_t, process * >::iterator iter_p = process_map.find(pgd);
+	if (iter_p == process_map.end())
+		return NULL;
+
+	process *proc = iter_p->second;
+	traverse_mmap(current_cpu, proc);
+    return NULL;
+}

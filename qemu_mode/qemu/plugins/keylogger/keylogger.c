@@ -16,8 +16,6 @@ http://code.google.com/p/decaf-platform/
  * @date Jan 24 2013
  */
 
-#include "qemu/osdep.h"
-#include "cpu.h"
 #include <sys/time.h>
 
 #include "DECAF_types.h"

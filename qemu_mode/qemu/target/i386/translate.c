@@ -17,9 +17,9 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 #include "qemu/osdep.h"
+#include "cpu.h"
 
 #include "qemu/host-utils.h"
-#include "cpu.h"
 #include "disas/disas.h"
 #include "exec/exec-all.h"
 #include "tcg-op.h"
@@ -30,6 +30,9 @@
 
 #include "trace-tcg.h"
 #include "exec/log.h"
+
+#include "shared/DECAF_main_internal.h" // AWH
+#include "shared/DECAF_callback_to_QEMU.h"
 
 
 #define PREFIX_REPZ   0x01
@@ -68,6 +71,31 @@
     case (1 << 6) | (OP << 3) | 0 ... (1 << 6) | (OP << 3) | 7: \
     case (2 << 6) | (OP << 3) | 0 ... (2 << 6) | (OP << 3) | 7: \
     case (3 << 6) | (OP << 3) | 0 ... (3 << 6) | (OP << 3) | 7
+
+//ZYW
+//LOK: I need a temporary global to hold the jump target for basic block end
+// This is used for checking to see if the block end callback is needed
+// Note that this is only known for direct jumps - for indirect jumps
+// we use the 0xFFFFFFFF (-1) default value
+//NOTE: There is an inherent assumption that gen_eob is called immediately
+// after gen_jump_im since I update next_pc in gen_jmp_im and then use it
+// in gen_eob.
+//next_pc is initialized to the default -1 value at the beginning of disas_insn
+// an alternative is to set it up in gen_intermediate_code_internal (which calls
+// disas_insn and is at the basic block level.)
+//I don't think we need to reset it to -1 after disas_insn, but it might be
+// safer to do so
+static target_ulong next_pc;
+
+//LOK: Similarly, we also need one to keep track of the current pc just because
+// gen_eob is called after gen_jmp_im - which updates the pc. So for block ends
+// that are generated at gen_eob, it is impossible to know where the branch
+// source was.
+static target_ulong cur_pc;
+
+static uint32_t cur_opcode;
+//ZYW END
+
 
 //#define MACRO_TEST   1
 
@@ -2150,6 +2178,47 @@ static inline void gen_goto_tb(DisasContext *s, int tb_num, target_ulong eip)
 
     if (use_goto_tb(s, pc))  {
         /* jump to same page: we can use a direct jump */
+
+// zyw
+	TranslationBlock *tb = s->tb;
+	if(DECAF_is_callback_needed(DECAF_INSN_END_CB))
+    		gen_helper_DECAF_invoke_insn_end_callback(cpu_env, 0);
+
+		//Heng: now we change the opcode-specific callback to instruction end.
+		if(DECAF_is_callback_needed(DECAF_OPCODE_RANGE_CB) &&
+				DECAF_is_callback_needed_for_opcode(cur_opcode)) {
+			TCGv t_cur_pc, t_next_pc, t_opcode;
+
+			t_cur_pc = tcg_const_ptr(cur_pc);
+			t_next_pc = tcg_temp_new_ptr();
+			tcg_gen_ld_tl(t_next_pc, cpu_env, offsetof(CPUArchState, eip));
+			t_opcode = tcg_const_i32(cur_opcode);
+			gen_helper_DECAF_invoke_opcode_range_callback(cpu_env, t_cur_pc, t_next_pc, t_opcode);
+
+			tcg_temp_free(t_cur_pc);
+			tcg_temp_free(t_next_pc);
+			tcg_temp_free_i32(t_opcode);
+		}
+
+
+    	//By the time this function is called, the env->eip has already been updated to the
+    	//  new target. Keep this in mind. Take a look at the gen_jmp_tb code below
+    	if(DECAF_is_BlockEndCallback_needed(tb->pc, pc))
+    	{
+          //create temporary variables for tb and from
+          //LOK: Updated to use ptr and plain TCGv (target_long) types instead of i32
+          TCGv_ptr tmpTb = tcg_const_ptr((tcg_target_ulong)tb);
+          //LOK: We use tcg_temp_new since that defines a new target_ulong
+          // which can be confirmed inside tcg-op.h:2141
+    	  TCGv tmpFrom = tcg_temp_new();
+    	  tcg_gen_movi_tl(tmpFrom, cur_pc);
+          gen_helper_DECAF_invoke_block_end_callback(cpu_env, tmpTb, tmpFrom);
+
+          tcg_temp_free(tmpFrom);
+          tcg_temp_free_ptr(tmpTb);
+    	}
+// zyw end 
+
         tcg_gen_goto_tb(tb_num);
         gen_jmp_im(eip);
         tcg_gen_exit_tb((uintptr_t)s->tb + tb_num);
@@ -2539,6 +2608,49 @@ do_gen_eob_worker(DisasContext *s, bool inhibit, bool recheck_tf, TCGv jr)
         tcg_gen_lookup_and_goto_ptr(vaddr);
         tcg_temp_free(vaddr);
     } else {
+//zyw 
+	if(DECAF_is_callback_needed(DECAF_INSN_END_CB))
+    		gen_helper_DECAF_invoke_insn_end_callback(cpu_env, 0);
+
+		//Heng: now we change the opcode-specific callback to instruction end.
+		if(DECAF_is_callback_needed(DECAF_OPCODE_RANGE_CB) &&
+				DECAF_is_callback_needed_for_opcode(cur_opcode)) {
+			TCGv t_cur_pc, t_next_pc, t_opcode;
+
+			t_cur_pc = tcg_const_ptr(cur_pc);
+			t_next_pc = tcg_temp_new_ptr();
+			tcg_gen_ld_tl(t_next_pc, cpu_env, offsetof(CPUArchState, eip));
+			t_opcode = tcg_const_i32(cur_opcode);
+			gen_helper_DECAF_invoke_opcode_range_callback(cpu_env, t_cur_pc, t_next_pc, t_opcode);
+
+			tcg_temp_free(t_cur_pc);
+			tcg_temp_free(t_next_pc);
+			tcg_temp_free_i32(t_opcode);
+		}
+
+
+    	//LOK: Changed over to the new block end interface
+    	//    	if(DECAF_is_callback_needed(DECAF_BLOCK_END_CB))
+    	//    		gen_helper_DECAF_invoke_callback(tcg_const_i32(DECAF_BLOCK_END_CB));
+    	//By the time this function is called, the env->eip has already been updated to the
+    	//  new target. Keep this in mind. Take a look at the gen_jmp_tb code below
+
+    	if(DECAF_is_BlockEndCallback_needed(s->tb->pc, next_pc))
+    	{
+          //create temporary variables for tb and from
+          //LOK: Updated to use ptr and plain TCGv (target_long) types instead of i32
+          TCGv_ptr tmpTb = tcg_const_ptr((tcg_target_ulong)s->tb);
+          //LOK: We use tcg_temp_new since that defines a new target_ulong
+          // which can be confirmed inside tcg-op.h:2141
+    	  TCGv tmpFrom = tcg_temp_new();
+
+    	  tcg_gen_movi_tl(tmpFrom, cur_pc);
+          gen_helper_DECAF_invoke_block_end_callback(cpu_env, tmpTb, tmpFrom);
+
+          tcg_temp_free(tmpFrom);
+          tcg_temp_free_ptr(tmpTb);
+    	}
+// zyw end
         tcg_gen_exit_tb(0);
     }
     s->is_jmp = DISAS_TB_JUMP;
@@ -4428,6 +4540,16 @@ static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
     target_ulong next_eip, tval;
     int rex_w, rex_r;
 
+//zyw
+    int insn_len = -1;
+    //LOK: update the new globals - cur_pc is NOT the current_eip
+    // and next_pc is the next IF jmp
+    //cur_pc is pc_start and not current_eip since current_eip
+    // does not take into account the cs_base (its relative) - see below
+    next_pc = (-1);
+    cur_pc = pc_start;
+//zyw end
+
     s->pc_start = s->pc = pc_start;
     prefixes = 0;
     s->override = -1;
@@ -4446,10 +4568,11 @@ static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
      * do not want to decode and generate IR for an illegal
      * instruction, the following check limits the instruction size to
      * 25 bytes: 14 prefix + 1 opc + 6 (modrm+sib+ofs) + 4 imm */
+    insn_len ++; //zyw
     if (s->pc - pc_start > 14) {
         goto illegal_op;
     }
-    b = cpu_ldub_code(env, s->pc);
+    cur_opcode = b = cpu_ldub_code(env, s->pc);
     s->pc++;
     /* Collect prefixes.  */
     switch (b) {
@@ -6955,6 +7078,26 @@ static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
         }
         break;
     case 0xcc: /* int3 */
+//zyw 
+	/* Aravind:
+         * We are within an interrupt. We fire opcode specific callback. 
+         * NOTE the exception that for int, this callback is triggered on insn_begin.
+         */
+        if(DECAF_is_callback_needed(DECAF_OPCODE_RANGE_CB) &&
+                DECAF_is_callback_needed_for_opcode(b)) {
+            TCGv t_cur_pc, t_next_pc, t_opcode;
+
+            t_cur_pc = tcg_const_ptr(cur_pc);
+            t_next_pc = tcg_temp_new_ptr();
+            tcg_gen_ld_tl(t_next_pc, cpu_env, offsetof(CPUArchState, eip));
+            t_opcode = tcg_const_i32(b);
+            gen_helper_DECAF_invoke_opcode_range_callback(cpu_env, t_cur_pc, t_next_pc, t_opcode);
+
+            tcg_temp_free(t_cur_pc);
+            tcg_temp_free(t_next_pc);
+            tcg_temp_free_i32(t_opcode);
+        }
+//zyw end
         gen_interrupt(s, EXCP03_INT3, pc_start - s->cs_base, s->pc - s->cs_base);
         break;
     case 0xcd: /* int N */
@@ -6962,6 +7105,27 @@ static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
         if (s->vm86 && s->iopl != 3) {
             gen_exception(s, EXCP0D_GPF, pc_start - s->cs_base);
         } else {
+
+//zyw
+	      /* Aravind:
+             * We are within an interrupt. We fire opcode specific callback. 
+             * NOTE the exception that for int, this callback is triggered on insn_begin.
+             */
+            if(DECAF_is_callback_needed(DECAF_OPCODE_RANGE_CB) &&
+                    DECAF_is_callback_needed_for_opcode(b)) {
+                TCGv t_cur_pc, t_next_pc, t_opcode;
+
+                t_cur_pc = tcg_const_ptr(cur_pc);
+                t_next_pc = tcg_temp_new_ptr();
+                tcg_gen_ld_tl(t_next_pc, cpu_env, offsetof(CPUArchState, eip));
+                t_opcode = tcg_const_i32(b);
+                gen_helper_DECAF_invoke_opcode_range_callback(cpu_env, t_cur_pc, t_next_pc, t_opcode);
+
+                tcg_temp_free(t_cur_pc);
+                tcg_temp_free(t_next_pc);
+                tcg_temp_free_i32(t_opcode);
+            }
+//zyw end
             gen_interrupt(s, val, pc_start - s->cs_base, s->pc - s->cs_base);
         }
         break;
@@ -8470,6 +8634,22 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
     }
 
     gen_tb_start(tb);
+
+//zyw
+    if(DECAF_is_BlockBeginCallback_needed(tb->pc))
+    {
+      //LOK: While we can define a new TCG operation for tcg_gen_movi_ptr in tcg/tcg-op.h we will just use tcg_const_ptr macro instead
+      //tcg_target_ulong is defined in tcg.h and
+      // according to the definition, it is defined as 64 bits if UINTPTR_MAX is UINT64_MAX
+      // which implies that the TCG target is the HOST
+      TCGv_ptr tmpTb = tcg_const_ptr((tcg_target_ulong)tb);
+      gen_helper_DECAF_invoke_block_begin_callback(cpu_env, tmpTb);
+      tcg_temp_free_ptr(tmpTb);
+      //LOK: I wonder if I really have to call tcg_temp_free_ptr
+      // since all of the other calls to tcg_const... don't have it
+    }
+//zyw end
+
     for(;;) {
         tcg_gen_insn_start(pc_ptr, dc->cc_op);
         num_insns++;
@@ -8489,6 +8669,10 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
         if (num_insns == max_insns && (tb->cflags & CF_LAST_IO)) {
             gen_io_start();
         }
+//zyw	
+	if (DECAF_is_callback_needed(DECAF_INSN_BEGIN_CB))
+        	gen_helper_DECAF_invoke_insn_begin_callback(cpu_env);
+//zyw end
 
         pc_ptr = disas_insn(env, dc, pc_ptr);
         /* stop translation if indicated */

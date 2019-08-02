@@ -1,8 +1,3 @@
-//zyw afl
-DEF_HELPER_0(aflInterceptPanic, void)
-DEF_HELPER_1(aflInterceptLog, void, env)
-DEF_HELPER_4(aflCall, tl, env, tl, tl, tl)
-
 //zyw
 DEF_HELPER_2(DECAF_invoke_block_begin_callback, void, ptr, ptr)
 DEF_HELPER_3(DECAF_invoke_block_end_callback, void, ptr, ptr, tl)

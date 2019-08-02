@@ -153,6 +153,22 @@ int VMI_find_process_by_cr3_c(uint32_t cr3, char proc_name[], size_t len, uint32
 
 }
 
+int VMI_find_process_by_cr3_all(uint32_t cr3, char proc_name[], size_t len, uint32_t *pid, uint32_t * parent_pid)
+{
+	process *p = NULL;
+	p = VMI_find_process_by_pgd(cr3);
+	if(!p)
+		return -1;
+	if(len > PROCESS_NAME_SIZE)
+		strncpy(proc_name,p->name,PROCESS_NAME_SIZE);
+	else
+		strncpy(proc_name,p->name,len);
+	*pid = p->pid;
+	*parent_pid = p->parent_pid;
+	return 0;
+
+}
+
 int VMI_find_process_by_pid_c(uint32_t pid, char proc_name[], size_t len, uint32_t *cr3)
 {
 	process *p = NULL;
@@ -292,7 +308,7 @@ int VMI_get_current_tid_c(CPUState* _env)
 #ifdef TARGET_I386
 	uint32_t val;
 	uint32_t tid;
-
+	CPUArchState * env_ptr = (CPUArchState *) _env->env_ptr;
 	//This may only work with Windows XP
 
 //	if (!is_guest_windows())
@@ -301,10 +317,10 @@ int VMI_get_current_tid_c(CPUState* _env)
 		return -1;
 
 	if (!DECAF_is_in_kernel(_env)) { // user module
-		if (DECAF_read_mem(_env, /* AWH cpu_single*/_env->segs[R_FS].base + 0x18, 4, &val) != -1
+		if (DECAF_read_mem(_env, /* AWH cpu_single*/env_ptr->segs[R_FS].base + 0x18, 4, &val) != -1
 				&& DECAF_read_mem(_env, val + 0x24, 4, &tid) != -1)
 			return tid;
-	} else if (DECAF_read_mem(_env, /* AWH cpu_single*/_env->segs[R_FS].base + 0x124, 4, &val)
+	} else if (DECAF_read_mem(_env, /* AWH cpu_single*/env_ptr->segs[R_FS].base + 0x124, 4, &val)
 			!= -1 && DECAF_read_mem(_env, val + 0x1F0, 4, &tid) != -1)
 		return tid;
 #endif

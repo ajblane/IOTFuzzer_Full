@@ -23,16 +23,16 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "zyw_config1.h"
+#ifdef STORE_PAGE_FUNC
+#include "DECAF_callback_to_QEMU.h"
+#endif
 
 #if !defined(SOFTMMU_CODE_ACCESS)
 #include "trace-root.h"
 #endif
 
 #include "trace/mem.h"
-
-//zyw
-#include "DECAF_callback_to_QEMU.h"
-extern ram_addr_t qemu_ram_addr_from_host_nofail(void *ptr);
 
 #if DATA_SIZE == 8
 #define SUFFIX q
@@ -187,12 +187,11 @@ glue(glue(glue(cpu_st, SUFFIX), MEMSUFFIX), _ra)(CPUArchState *env,
                                                      retaddr);
     } else {
         uintptr_t hostaddr = addr + env->tlb_table[mmu_idx][page_index].addend;
-        //zyw
- 
+#ifdef STORE_PAGE_FUNC
         if(DECAF_is_callback_needed(DECAF_MEM_WRITE_CB)){
-            helper_DECAF_invoke_mem_write_callback(ptr, qemu_ram_addr_from_host_nofail((void *)(hostaddr)), (void *)(hostaddr), 0 ,0); //value 0
+            helper_DECAF_invoke_mem_write_callback(ptr, qemu_ram_addr_from_host((void *)(hostaddr)), (void *)(hostaddr), 0 ,0, 2); //value 0
         }
-
+#endif
         glue(glue(st, SUFFIX), _p)((uint8_t *)hostaddr, v);
     }
 }

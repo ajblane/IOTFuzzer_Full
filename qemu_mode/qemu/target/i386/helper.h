@@ -1,3 +1,10 @@
+//zyw
+DEF_HELPER_4(DECAF_invoke_opcode_range_callback, void, ptr, tl, tl, i32)
+DEF_HELPER_2(DECAF_invoke_block_begin_callback, void, ptr, ptr)
+DEF_HELPER_3(DECAF_invoke_block_end_callback, void, ptr, ptr, tl)
+DEF_HELPER_1(DECAF_invoke_insn_begin_callback, void, ptr)
+DEF_HELPER_2(DECAF_invoke_insn_end_callback, void, ptr, tl)
+
 DEF_HELPER_FLAGS_4(cc_compute_all, TCG_CALL_NO_RWG_SE, tl, tl, tl, tl, int)
 DEF_HELPER_FLAGS_4(cc_compute_c, TCG_CALL_NO_RWG_SE, tl, tl, tl, tl, int)
 

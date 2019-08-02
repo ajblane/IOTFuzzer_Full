@@ -624,7 +624,7 @@ void DECAF_init(void) {
 	 * This is because, TEMU_load restores guest.log, which is read into function map.
 	 */
 	//zyw
-	//? need comment?
+
 	//register_savevm_live(NULL, "DECAF", 0, 1, DECAF_save, NULL );
 	//register_savevm(NULL, "DECAF", 0, 1, DECAF_save, DECAF_load, NULL );
 	DECAF_vm_compress_init();
